@@ -16,104 +16,87 @@ You have a Google Sheet with student names, their LeetCode profile links, and a 
 ```javascript
 // This function adds a custom button to your Google Sheet menu
 function onOpen() {
-  const ui = SpreadsheetApp.getUi();
-  ui.createMenu('Update prfile')
-      .addItem('Update Stats Now', 'updateLeetCodeStats')
-      .addToUi();
+  SpreadsheetApp.getUi()
+    .createMenu('LeetCode Tool')
+    .addItem('Update Stats Now', 'updateLeetCodeStats')
+    .addToUi();
 }
 
 function updateLeetCodeStats() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
-  
-  // Get all data from the sheet
-  const dataRange = sheet.getDataRange();
-  const data = dataRange.getValues();
-  
-  // Loop through every row
-  for (let i = 0; i < data.length; i++) {
-    const row = data[i];
-    
-    // Column E is index 4   update accordingly    (the LeetCode URL)
-    const url = row[4]; 
-    
-    if (url && typeof url === 'string' && url.includes('leetcode.com')) {
-      const username = extractUsername(url);
-      
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+  var data = sheet.getDataRange().getValues();
+  var updated = 0;
+  var failed = [];
+
+  for (var i = 0; i < data.length; i++) {
+    var url = String(data[i][3] || '');  // Column D
+
+    if (url.indexOf('leetcode.com') !== -1) {
+      var username = extractUsername(url);
+
       if (username) {
-        const count = getLeetCodeSolved(username);
-        
+        var count = getLeetCodeSolved(username);
+
         if (count !== null) {
-          // Update Column B (which is column number 2 in Sheets)
-          sheet.getRange(i + 1, 2).setValue(count);
-          
-          // Wait so LeetCode doesn't block the script
-          Utilities.sleep(500); 
+          sheet.getRange(i + 1, 2).setValue(count);  // Write to Column B
+          updated++;
+        } else {
+          failed.push('Row ' + (i + 1) + ': ' + data[i][0]);
         }
+
+        Utilities.sleep(1000);
       }
     }
   }
-  
-  SpreadsheetApp.getUi().alert("Finished updating all LeetCode stats!");
+
+  var msg = 'Updated ' + updated + ' students!';
+  if (failed.length > 0) {
+    msg += '\n\nFailed ' + failed.length + ':\n' + failed.join('\n');
+  }
+  SpreadsheetApp.getUi().alert(msg);
 }
 
 function extractUsername(url) {
-  let cleaned = url.trim();
-  if (cleaned.endsWith('/')) cleaned = cleaned.slice(0, -1);
-  const parts = cleaned.split('/');
-  
-  const uIndex = parts.indexOf('u');
+  var cleaned = url.trim();
+  if (cleaned.charAt(cleaned.length - 1) === '/') cleaned = cleaned.slice(0, -1);
+  var parts = cleaned.split('/');
+
+  var uIndex = parts.indexOf('u');
   if (uIndex !== -1 && uIndex + 1 < parts.length) {
     return parts[uIndex + 1];
   }
-  
-  const last = parts[parts.length - 1];
-  if (last && last !== 'leetcode.com') {
-    return last;
-  }
+
+  var last = parts[parts.length - 1];
+  if (last && last !== 'leetcode.com') return last;
   return null;
 }
 
 function getLeetCodeSolved(username) {
-  const url = "https://leetcode.com/graphql";
-  
-  const payload = {
-    "query": `
-      query getUserProfile($username: String!) {
-        matchedUser(username: $username) {
-          submitStats {
-            acSubmissionNum {
-              difficulty
-              count
-            }
-          }
-        }
-      }
-    `,
-    "variables": { "username": username }
+  var url = 'https://leetcode.com/graphql';
+
+  var payload = {
+    query: 'query getUserProfile($username: String!) { matchedUser(username: $username) { submitStats { acSubmissionNum { difficulty count } } } }',
+    variables: { username: username }
   };
-  
-  const options = {
-    "method": "post",
-    "contentType": "application/json",
-    "payload": JSON.stringify(payload),
-    "muteHttpExceptions": true
+
+  var options = {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
   };
-  
+
   try {
-    const response = UrlFetchApp.fetch(url, options);
-    const json = JSON.parse(response.getContentText());
-    
-    const stats = json?.data?.matchedUser?.submitStats?.acSubmissionNum;
+    var response = UrlFetchApp.fetch(url, options);
+    var json = JSON.parse(response.getContentText());
+    var stats = json && json.data && json.data.matchedUser && json.data.matchedUser.submitStats && json.data.matchedUser.submitStats.acSubmissionNum;
+
     if (stats) {
-      for (let i = 0; i < stats.length; i++) {
-        if (stats[i].difficulty === 'All') {
-          return stats[i].count;
-        }
+      for (var i = 0; i < stats.length; i++) {
+        if (stats[i].difficulty === 'All') return stats[i].count;
       }
     }
-  } catch (e) {
-    // Skip if there's an error
-  }
+  } catch (e) {}
   return null;
 }
 ```
